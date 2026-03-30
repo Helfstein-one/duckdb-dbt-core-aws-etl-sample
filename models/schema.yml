@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: stg_raw_data
+    description: "Raw transactions from landing bucket."
+    columns:
+      - name: user_id
+        description: "Unique identifier for the user"
+        tests:
+          - not_null
+      - name: transaction_amount
+        description: "Amount of the transaction"
+        tests:
+          - not_null
+      - name: status
+        description: "Status of the transaction (e.g., success, failed)"
+        tests:
+          - not_null
+
+  - name: fct_analytics
+    description: "Monthly aggregation of transactions by status."
+    columns:
+      - name: status
+        tests:
+          - not_null
+      - name: transaction_month
+        tests:
+          - not_null
+      - name: total_transactions
+        tests:
+          - not_null

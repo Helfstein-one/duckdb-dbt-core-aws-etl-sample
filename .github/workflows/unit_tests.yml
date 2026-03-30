@@ -1,0 +1,23 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [ "develop", "main" ]
+  pull_request:
+    branches: [ "develop", "main" ]
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build ETL Container
+        run: podman build -t antigravity-etl .
+
+      - name: Validate Python Scripts
+        run: podman run --rm -v ${{ github.workspace }}:/app antigravity-etl python -m py_compile scripts/generate_faker_data.py
+
+      - name: Run dbt Parse (Syntax/Config Check)
+        run: podman run --rm -v ${{ github.workspace }}:/app antigravity-etl bash -c "dbt parse --profiles-dir ."

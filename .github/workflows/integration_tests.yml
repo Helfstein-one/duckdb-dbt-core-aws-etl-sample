@@ -1,0 +1,78 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [ "develop", "main" ]
+  pull_request:
+    branches: [ "develop", "main" ]
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install podman-compose
+
+      - name: Start Database Infrastructure (MinIO)
+        run: podman-compose up -d
+
+      - name: Configure Storage Buckets
+        run: |
+          sleep 5
+          chmod +x setup_buckets.sh
+          ./setup_buckets.sh
+
+      - name: Build ETL Container Image
+        run: podman build -t antigravity-etl .
+
+      - name: Generate Fake Data (Extract & Load)
+        run: podman run --rm --network host -v ${{ github.workspace }}:/app antigravity-etl python scripts/generate_faker_data.py
+        env:
+          MINIO_URL: "http://localhost:9000"
+
+      - name: Execute Data Transformations (dbt run)
+        run: podman run --rm --network host -v ${{ github.workspace }}:/app antigravity-etl bash -c "dbt run --profiles-dir ."
+        env:
+          MINIO_URL: "http://localhost:9000"
+
+      - name: Show Data Samples - Staging (dbt show)
+        run: podman run --rm --network host -v ${{ github.workspace }}:/app antigravity-etl bash -c "dbt show --select stg_raw_data --profiles-dir . --limit 5"
+        env:
+          MINIO_URL: "http://localhost:9000"
+
+      - name: Show Data Samples - Curated (dbt show)
+        run: podman run --rm --network host -v ${{ github.workspace }}:/app antigravity-etl bash -c "dbt show --select fct_analytics --profiles-dir . --limit 5"
+        env:
+          MINIO_URL: "http://localhost:9000"
+
+      - name: Validate Data Quality (dbt test)
+        run: podman run --rm --network host -v ${{ github.workspace }}:/app antigravity-etl bash -c "dbt test --profiles-dir ."
+        env:
+          MINIO_URL: "http://localhost:9000"
+
+      - name: Teardown Infrastructure
+        if: always()
+        run: podman-compose down
+
+  end-to-end-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install podman-compose
+
+      - name: Execute End-to-End Pipeline
+        run: |
+          chmod +x run_pipeline.sh
+          ./run_pipeline.sh
+        env:
+          MINIO_URL: "http://localhost:9000"
